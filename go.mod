@@ -15,6 +15,5 @@ require (
 	github.com/unrolled/secure v1.0.9
 	github.com/urfave/cli v1.22.5
 	github.com/urfave/negroni v1.0.0
-	gitlab.linkaja.com/gopkg/validator v1.0.0
 	go.mongodb.org/mongo-driver v1.7.4
 )

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/avrebarra/valeed"
-	"gitlab.linkaja.com/gopkg/validator"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -94,7 +93,7 @@ func (e *Mongo) Persist(ctx context.Context, in *User) (err error) {
 
 	// prep and validate
 	collecname := e.config.CollecNamePrefix + MongoCollecName
-	if err = validator.ValidateWithOpts(in, validator.Opts{Mode: validator.ModeCompact}); err != nil {
+	if err = valeed.Validate(in); err != nil {
 		err = fmt.Errorf("bad input: %w", err)
 		return
 	}
