@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/avrebarra/valeed v1.0.0
 	github.com/fatih/color v1.13.0
-	github.com/go-playground/validator v9.31.0+incompatible
+	github.com/go-playground/validator v9.31.0+incompatible // indirect
 	github.com/gorilla/mux v1.8.0
 	github.com/gravityblast/xrequestid v0.0.0-20160221113542-870344eeaa6c
 	github.com/jinzhu/copier v0.3.2
