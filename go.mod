@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/avrebarra/valeed v1.0.0
 	github.com/fatih/color v1.13.0
+	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/gorilla/mux v1.8.0
 	github.com/gravityblast/xrequestid v0.0.0-20160221113542-870344eeaa6c
 	github.com/labstack/gommon v0.3.1
@@ -14,4 +15,6 @@ require (
 	github.com/unrolled/secure v1.0.9
 	github.com/urfave/cli v1.22.5
 	github.com/urfave/negroni v1.0.0
+	gitlab.linkaja.com/gopkg/validator v1.0.0
+	go.mongodb.org/mongo-driver v1.7.4
 )
