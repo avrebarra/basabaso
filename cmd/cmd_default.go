@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,8 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/avrebarra/basabaso/pkg/fireconfig"
 	"github.com/avrebarra/basabaso/pkg/logutil"
 	"github.com/avrebarra/basabaso/runtime/server"
+	"github.com/avrebarra/valeed"
+	"github.com/caarlos0/env"
+	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 
 	zlog "github.com/rs/zerolog/log"
@@ -19,13 +24,76 @@ import (
 
 type ExecDefault struct{}
 
-func (s ExecDefault) Run() (err error) {
-	portnum := 8777
-	enablePrettyLog := true
+func (s ExecDefault) Run() error {
+	ctx := context.Background()
+
+	// ---
+	// prepare env config
+	type ConfigEnvironment struct {
+		ServiceName       string `env:"SERVICE_NAME" validate:"required"`
+		FirestoreCredFile string `env:"FIRESTORE_CRED_FILE" validate:"required"`
+		LocalConfigFile   string `env:"LOCAL_CONFIG_FILE" validate:"-"`
+	}
+	var cfgEnv = ConfigEnvironment{
+		ServiceName: "basabaso",
+	}
+	_ = godotenv.Load()
+	if err := env.Parse(&cfgEnv); err != nil {
+		err = fmt.Errorf("failure parsing environment file: %w", err)
+		return err
+	}
+	if err := valeed.Validate(cfgEnv); err != nil {
+		err = fmt.Errorf("bad environment config: %w", err)
+		return err
+	}
+
+	// ---
+	// prepare service config
+	type ConfigService struct {
+		ServerPort                  int  `json:"server_port" validate:"required"`
+		LoggingEnablePrettyPrinting bool `json:"logging_enable_pretty_printing" validate:"-"`
+	}
+
+	cfgService := ConfigService{}
+	cfgServiceRaw := ""
+
+	// * try fetch config from local
+	cfgServiceRaw = string(cfgEnv.LocalConfigFile)
+
+	// * try  connect and fetch from fireconfig
+	if cfgEnv.LocalConfigFile == "" {
+		fireconf, err := fireconfig.New(fireconfig.Config{
+			FirebaseConfigJSON: []byte(cfgEnv.FirestoreCredFile),
+			CollecName:         "core-configs",
+			ContentFieldName:   "content",
+		})
+		if err != nil {
+			err = fmt.Errorf("fireconfig setup failed: %w", err)
+			return err
+		}
+		outGetConfig, err := fireconf.Get(ctx, cfgEnv.ServiceName)
+		if err != nil {
+			err = fmt.Errorf("fireconfig fetch failed: %w", err)
+			return err
+		}
+		cfgServiceRaw = string(outGetConfig)
+		fireconf.Close(ctx) // close fireconfig
+	}
+
+	// * parse and validate
+	err := json.Unmarshal([]byte(cfgServiceRaw), &cfgService)
+	if err != nil {
+		err = fmt.Errorf("parsing config failed: %w", err)
+		return err
+	}
+	if err := valeed.Validate(cfgService); err != nil {
+		err = fmt.Errorf("bad service config: %w", err)
+		return err
+	}
 
 	// ---
 	// setup logging
-	outwriter := logutil.PrettyPrinter{Enable: enablePrettyLog, Out: os.Stdout}
+	outwriter := logutil.PrettyPrinter{Enable: cfgService.LoggingEnablePrettyPrinting, Out: os.Stdout}
 	zlog.Logger = zerolog.New(outwriter).With().Timestamp().Logger()
 	log.SetFlags(0)
 	log.SetOutput(zerolog.New(outwriter).With().Str("level", "debug").Timestamp().Logger())
@@ -36,17 +104,17 @@ func (s ExecDefault) Run() (err error) {
 	servercore, err := server.New(server.Config{})
 	if err != nil {
 		err = fmt.Errorf("cannot init server core: %w", err)
-		return
+		return err
 	}
 
 	serverhandler, err := servercore.MakeHandler()
 	if err != nil {
 		err = fmt.Errorf("cannot make server handler: %w", err)
-		return
+		return err
 	}
 
 	serverinst := &http.Server{
-		Addr:    fmt.Sprintf(":%d", portnum),
+		Addr:    fmt.Sprintf(":%d", cfgService.ServerPort),
 		Handler: serverhandler,
 	}
 
@@ -59,7 +127,7 @@ func (s ExecDefault) Run() (err error) {
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 
 	// ** dispatch http server
-	log.Printf("* using http://localhost:%d to start http server...\n", portnum)
+	log.Printf("* using http://localhost:%d to start http server...\n", cfgService.ServerPort)
 	go func() {
 		if err := serverinst.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			err = fmt.Errorf("http server listen error: %w", err)
@@ -83,5 +151,5 @@ func (s ExecDefault) Run() (err error) {
 
 	log.Println("* exited")
 
-	return
+	return nil
 }
