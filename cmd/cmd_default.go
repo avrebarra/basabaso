@@ -32,6 +32,7 @@ func (s ExecDefault) Run() error {
 	type ConfigEnvironment struct {
 		ServiceName       string `env:"SERVICE_NAME" validate:"required"`
 		FirestoreCredFile string `env:"FIRESTORE_CRED_FILE" validate:"required"`
+		LocalConfigFile   string `env:"LOCAL_CONFIG_FILE" validate:"-"`
 	}
 	var cfgEnv = ConfigEnvironment{
 		ServiceName: "basabaso",
@@ -53,27 +54,36 @@ func (s ExecDefault) Run() error {
 		LoggingEnablePrettyPrinting bool `json:"logging_enable_pretty_printing" validate:"-"`
 	}
 
-	// * connect and fetch from fireconfig
-	fireconf, err := fireconfig.New(fireconfig.Config{
-		FirebaseConfigJSON: []byte(cfgEnv.FirestoreCredFile),
-		CollecName:         "core-configs",
-		ContentFieldName:   "content",
-	})
-	if err != nil {
-		err = fmt.Errorf("fireconfig setup failed: %w", err)
-		return err
+	cfgService := ConfigService{}
+	cfgServiceRaw := ""
+
+	// * try fetch config from local
+	cfgServiceRaw = string(cfgEnv.LocalConfigFile)
+
+	// * try  connect and fetch from fireconfig
+	if cfgEnv.LocalConfigFile == "" {
+		fireconf, err := fireconfig.New(fireconfig.Config{
+			FirebaseConfigJSON: []byte(cfgEnv.FirestoreCredFile),
+			CollecName:         "core-configs",
+			ContentFieldName:   "content",
+		})
+		if err != nil {
+			err = fmt.Errorf("fireconfig setup failed: %w", err)
+			return err
+		}
+		outGetConfig, err := fireconf.Get(ctx, cfgEnv.ServiceName)
+		if err != nil {
+			err = fmt.Errorf("fireconfig fetch failed: %w", err)
+			return err
+		}
+		cfgServiceRaw = string(outGetConfig)
+		fireconf.Close(ctx) // close fireconfig
 	}
-	outGetConfig, err := fireconf.Get(ctx, cfgEnv.ServiceName)
-	if err != nil {
-		err = fmt.Errorf("fireconfig fetch failed: %w", err)
-		return err
-	}
-	fireconf.Close(ctx)
 
 	// * parse and validate
-	var cfgService = ConfigService{}
-	err = json.Unmarshal(outGetConfig, &cfgService)
+	err := json.Unmarshal([]byte(cfgServiceRaw), &cfgService)
 	if err != nil {
+		err = fmt.Errorf("parsing config failed: %w", err)
 		return err
 	}
 	if err := valeed.Validate(cfgService); err != nil {
